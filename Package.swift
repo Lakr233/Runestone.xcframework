@@ -16,7 +16,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "Runestone",
-            path: "BinaryTarget/Runestone.xcframework"
+            url: "https://github.com/Lakr233/Runestone.xcframework/releases/download/storage.0.1.0/Runestone.xcframework.zip",
+            checksum: "1353a1f07344f6e8a395074542be621cc2a2f0819f2a8e637941abae2ca01376"
         ),
         .target(
             name: "RunestoneEditor",
