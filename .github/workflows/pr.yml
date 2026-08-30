@@ -1,0 +1,36 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scripts:
+    name: Script Syntax
+    runs-on: [self-hosted, macos, arm64, mini-control]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Python Assemble Syntax
+        run: python3 -m py_compile Script/assemble.py
+
+      - name: Shell Syntax
+        run: |
+          bash -n Script/build.sh
+          bash -n Script/fetch-upstream.sh
+          bash -n Script/build-manifest.sh
+          bash -n Script/verify-xcframework.sh
+          bash -n Script/test-xcframework-consumer.sh
+          bash -n Script/test.sh
+          bash -n build.sh
