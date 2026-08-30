@@ -1,0 +1,63 @@
+name: UI Tests
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ui-tests-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  ios-iphone:
+    name: iPhone Simulator UI Tests
+    runs-on: macos-26
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build XCFramework
+        run: ./Script/build.sh --skip-tests
+
+      - name: Run iPhone UI Tests
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/runestone-ui-ios.xcresult"
+          RUNTIME=$(xcrun simctl list runtimes available | awk '/^iOS .*com\.apple\.CoreSimulator\.SimRuntime\.iOS/ { runtime=$NF } END { print runtime }')
+          [ -n "$RUNTIME" ] || { echo "no available iOS simulator runtime"; exit 1; }
+          DEVICE=$(xcrun simctl list devicetypes | sed -n '/iPhone 16/s/.*(\(com\.apple\.CoreSimulator\.SimDeviceType\.[^)]*\)).*/\1/p' | head -1)
+          if [ -z "$DEVICE" ]; then
+            DEVICE=$(xcrun simctl list devicetypes | sed -n '/iPhone/s/.*(\(com\.apple\.CoreSimulator\.SimDeviceType\.[^)]*\)).*/\1/p' | head -1)
+          fi
+          [ -n "$DEVICE" ] || { echo "no available iPhone simulator device type"; exit 1; }
+          UDID=$(xcrun simctl create "runestone-ui-iPhone-${GITHUB_RUN_ID}" "$DEVICE" "$RUNTIME")
+          trap 'xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true; xcrun simctl delete "$UDID" >/dev/null 2>&1 || true' EXIT
+          xcrun simctl shutdown all >/dev/null 2>&1 || true
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcodebuild test \
+            -project Example/MobileRunestoneApp.xcodeproj \
+            -scheme MobileRunestoneApp \
+            -destination "id=$UDID" \
+            -resultBundlePath "$RUNNER_TEMP/runestone-ui-ios.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Upload iPhone Result Bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runestone-ui-ios-xcresult
+          path: ${{ runner.temp }}/runestone-ui-ios.xcresult
+          retention-days: 7

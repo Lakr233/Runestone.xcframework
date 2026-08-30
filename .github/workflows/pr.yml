@@ -1,0 +1,38 @@
+name: PR Build & Test
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+# Zero-scope token: PRs run untrusted code, and the public release asset
+# downloads without auth.
+permissions: {}
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Script Syntax
+        run: |
+          python3 -m py_compile Script/assemble.py
+          for script in Script/*.sh; do
+            bash -n "$script"
+          done
+
+      - name: Build & Test Package
+        run: ./Script/test.sh

@@ -1,0 +1,103 @@
+name: Release Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: "Package version to publish, for example 1.0.0."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-package
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Resolve Release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE_VERSION="${{ github.event.inputs.package_version }}"
+          if ! echo "$PACKAGE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "[!] package_version must be semantic, for example 1.0.0: $PACKAGE_VERSION"
+            exit 1
+          fi
+
+          git fetch --tags origin
+          if git rev-parse "refs/tags/$PACKAGE_VERSION" >/dev/null 2>&1; then
+            echo "[!] package tag already exists: $PACKAGE_VERSION"
+            exit 1
+          fi
+
+          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "storage_tag=storage.$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build XCFramework
+        run: ./Script/build.sh
+
+      - name: Compile Test
+        run: ./Script/test.sh
+
+      - name: Write Release Manifest
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.storage_tag }}/Runestone.xcframework.zip"
+          ./Script/build-manifest.sh build/Runestone.xcframework.zip "$DOWNLOAD_URL"
+
+      - name: Stage Asset
+        run: cp ./build/Runestone.xcframework.zip ./Runestone.xcframework.zip
+
+      - name: Commit Manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Package.swift
+          git commit -m "release: ${{ steps.release.outputs.package_version }}" || echo "No changes to commit"
+          git push
+
+      - name: Create Storage Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.release.outputs.storage_tag }}
+          target_commitish: ${{ github.ref_name }}
+          body: |
+            Runestone XCFramework ${{ steps.release.outputs.package_version }}
+          draft: false
+          prerelease: false
+          files: |
+            Runestone.xcframework.zip
+
+      - name: Create Package Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.release.outputs.package_version }}
+          target_commitish: ${{ github.ref_name }}
+          body: |
+            Runestone ${{ steps.release.outputs.package_version }}
+
+            Combined prebuilt XCFramework:
+            - Runestone
+            - Tree-sitter
+            - RunestoneLanguageSupport
+            - RunestoneThemeSupport
+            - RunestoneEditor convenience API
+
+            Binary: `storage.${{ steps.release.outputs.package_version }}` / Runestone.xcframework.zip
+          draft: false
+          prerelease: false

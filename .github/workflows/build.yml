@@ -1,0 +1,70 @@
+name: Build XCFramework
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_storage:
+        description: "Publish a storage.<version> GitHub release with the XCFramework zip."
+        required: false
+        type: boolean
+        default: false
+      storage_version:
+        description: "Storage version, for example 1.0.0. Required when publishing."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-xcframework
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build XCFramework
+        run: ./Script/build.sh
+
+      - name: Compile Test
+        run: ./Script/test.sh
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Runestone.xcframework
+          path: build/Runestone.xcframework.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish Storage Release
+        if: ${{ github.event.inputs.publish_storage == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.inputs.storage_version }}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "[!] storage_version must be semantic, for example 1.0.0"
+            exit 1
+          fi
+          TAG="storage.$VERSION"
+          git fetch --tags origin
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "[!] storage tag already exists: $TAG"
+            exit 1
+          fi
+          gh release create "$TAG" \
+            --title "Runestone XCFramework $VERSION" \
+            --notes "Prebuilt Runestone XCFramework $VERSION (Tree-sitter, languages, and themes included)." \
+            build/Runestone.xcframework.zip
