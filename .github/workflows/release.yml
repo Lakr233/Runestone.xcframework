@@ -94,6 +94,9 @@ jobs:
             echo "[*] Package.swift unchanged"
           else
             git commit -m "release: $PACKAGE_VERSION ($UPSTREAM_TAG)"
+            # main may have moved while test.sh ran; replay the manifest commit on top of it.
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
             git push origin "HEAD:$GITHUB_REF_NAME"
           fi
 
@@ -103,7 +106,10 @@ jobs:
           PACKAGE_VERSION: ${{ inputs.package_version }}
           UPSTREAM_TAG: ${{ inputs.upstream_tag }}
         run: |
-          source ./Upstream.versions
+          # The upstream version is the one encoded in the tag being shipped, which
+          # need not match the current pin in Upstream.versions.
+          RUNESTONE_VERSION=${UPSTREAM_TAG#upstream.}
+          RUNESTONE_VERSION=${RUNESTONE_VERSION%-*}
           SHA256=$(shasum -a 256 build/Runestone.xcframework.zip | awk '{print $1}')
           NOTES="$RUNNER_TEMP/package-release-notes.md"
           {

@@ -6,6 +6,9 @@
 #   ./Script/resolve-upstream.sh latest          highest semver tag on RUNESTONE_REPO
 #   ./Script/resolve-upstream.sh 0.5.3           that tag
 #   ./Script/resolve-upstream.sh latest --write  also rewrite the pin in Upstream.versions
+#   ./Script/resolve-upstream.sh 0.5.3 --ref <sha> --write
+#                                                pin exactly this version/commit, no lookup
+#                                                (CI writes the pair its plan job resolved)
 #
 # stdout is eval-able: RUNESTONE_VERSION=<version> and RUNESTONE_REF=<sha>.
 # Everything else goes to stderr.
@@ -22,15 +25,32 @@ fi
 source ./Upstream.versions
 
 REQUESTED=""
+REQUESTED_REF=""
 WRITE=0
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --write) WRITE=1 ;;
-        *) REQUESTED=$arg ;;
+        --ref)
+            shift
+            REQUESTED_REF=${1:-}
+            ;;
+        *) REQUESTED=$1 ;;
     esac
+    shift
 done
 
-if [ -z "$REQUESTED" ]; then
+if [ -n "$REQUESTED_REF" ]; then
+    if ! echo "$REQUESTED" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+        echo "[!] --ref needs a semantic version too, for example 0.5.2. Received: $REQUESTED" >&2
+        exit 1
+    fi
+    if ! echo "$REQUESTED_REF" | grep -Eq '^[0-9a-f]{40}$'; then
+        echo "[!] --ref must be a full 40-character lowercase commit hash. Received: $REQUESTED_REF" >&2
+        exit 1
+    fi
+    VERSION=$REQUESTED
+    REF=$REQUESTED_REF
+elif [ -z "$REQUESTED" ]; then
     VERSION=$RUNESTONE_VERSION
     REF=$RUNESTONE_REF
 else

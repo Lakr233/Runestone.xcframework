@@ -45,32 +45,69 @@ jobs:
       upstream_version: ${{ steps.plan.outputs.upstream_version }}
       upstream_ref: ${{ steps.plan.outputs.upstream_ref }}
       tag: ${{ steps.plan.outputs.tag }}
+      package_version: ${{ steps.plan.outputs.package_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # Every decision is made here, before the expensive job: which upstream
+      # commit, which upstream tag, and which package version. Anything invalid
+      # fails in seconds instead of after a multi-hour build.
       - name: Resolve Upstream
         id: plan
         env:
           EVENT_NAME: ${{ github.event_name }}
           REQUESTED: ${{ inputs.upstream_version }}
+          RELEASE_PACKAGE: ${{ inputs.release_package }}
+          REQUESTED_PACKAGE_VERSION: ${{ inputs.package_version }}
         run: |
           if [ "$EVENT_NAME" = "schedule" ]; then
             REQUESTED=latest
           fi
-          eval "$(./Script/resolve-upstream.sh "$REQUESTED")"
+          resolved=$(./Script/resolve-upstream.sh "$REQUESTED")
+          eval "$resolved"
+
           BUILD=true
-          if [ "$EVENT_NAME" = "schedule" ] && ./Script/next-tag.sh has-upstream "$RUNESTONE_VERSION"; then
-            echo "[*] simonbs/Runestone $RUNESTONE_VERSION already has an upstream.* release; nothing to build"
-            BUILD=false
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            rc=0
+            ./Script/next-tag.sh has-upstream "$RUNESTONE_VERSION" || rc=$?
+            case "$rc" in
+              0)
+                echo "[*] simonbs/Runestone $RUNESTONE_VERSION already has an upstream.* release; nothing to build"
+                BUILD=false
+                ;;
+              1) ;;
+              *) exit "$rc" ;;
+            esac
           fi
           TAG=$(./Script/next-tag.sh upstream "$RUNESTONE_VERSION")
-          echo "[*] simonbs/Runestone $RUNESTONE_VERSION ($RUNESTONE_REF) -> $TAG, build=$BUILD"
+
+          PACKAGE_VERSION=""
+          if [ "$EVENT_NAME" = "schedule" ] || [ "$RELEASE_PACKAGE" = "true" ]; then
+            PACKAGE_VERSION=${REQUESTED_PACKAGE_VERSION:-$(./Script/next-tag.sh package)}
+            if ! echo "$PACKAGE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "[!] package_version must be semantic, for example 0.2.1. Received: $PACKAGE_VERSION"
+              exit 1
+            fi
+            rc=0
+            ./Script/next-tag.sh exists "$PACKAGE_VERSION" || rc=$?
+            case "$rc" in
+              0)
+                echo "[!] Package version $PACKAGE_VERSION is already released. Choose a new version."
+                exit 1
+                ;;
+              1) ;;
+              *) exit "$rc" ;;
+            esac
+          fi
+
+          echo "[*] simonbs/Runestone $RUNESTONE_VERSION ($RUNESTONE_REF) -> $TAG, build=$BUILD, package=${PACKAGE_VERSION:-none}"
           {
             echo "build=$BUILD"
             echo "upstream_version=$RUNESTONE_VERSION"
             echo "upstream_ref=$RUNESTONE_REF"
             echo "tag=$TAG"
+            echo "package_version=$PACKAGE_VERSION"
           } >> "$GITHUB_OUTPUT"
 
   build:
@@ -83,16 +120,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      # Write exactly the pair the plan job resolved; no second lookup.
       - name: Pin Upstream
-        run: ./Script/resolve-upstream.sh "${{ needs.plan.outputs.upstream_version }}" --write
+        run: ./Script/resolve-upstream.sh "${{ needs.plan.outputs.upstream_version }}" --ref "${{ needs.plan.outputs.upstream_ref }}" --write
 
       - name: Build XCFramework
         run: ./Script/build.sh
+
+      # build.sh points Package.swift at BinaryTarget/, so this tests the exact
+      # bytes about to be published. A broken binary must not become an
+      # immutable upstream.* release.
+      - name: Compile Test
+        run: ./Script/test.sh
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -115,6 +160,9 @@ jobs:
             echo "[*] Upstream.versions unchanged"
           else
             git commit -m "upstream: simonbs/Runestone $RUNESTONE_VERSION ($RUNESTONE_REF)"
+            # main may have moved during the build; replay the pin on top of it.
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
             git push origin "HEAD:$GITHUB_REF_NAME"
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -127,17 +175,25 @@ jobs:
           RUNESTONE_REF: ${{ needs.plan.outputs.upstream_ref }}
           TARGET_SHA: ${{ steps.pin.outputs.sha }}
         run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "[!] upstream tag already exists: $TAG"
-            exit 1
-          fi
+          # The tag was chosen hours ago; make sure nobody took it since. A
+          # network error must fail here, not read as "free".
+          rc=0
+          ./Script/next-tag.sh exists "$TAG" || rc=$?
+          case "$rc" in
+            0)
+              echo "[!] Upstream tag $TAG already exists. Re-run the workflow to pick the next rev."
+              exit 1
+              ;;
+            1) ;;
+            *) exit "$rc" ;;
+          esac
           SHA256=$(shasum -a 256 build/Runestone.xcframework.zip | awk '{print $1}')
           NOTES="$RUNNER_TEMP/upstream-release-notes.md"
           {
             echo "Prebuilt Runestone XCFramework: iOS, iOS Simulator, Mac Catalyst, visionOS, visionOS Simulator."
             echo
             echo "- simonbs/Runestone \`$RUNESTONE_VERSION\` (\`$RUNESTONE_REF\`)"
-            echo "- Tree-sitter runtime, language grammars, and themes from \`Vendor/RunestoneEditor\` at \`$TARGET_SHA\`"
+            echo "- Tree-sitter runtime, Simon Støvring's language grammars, and themes from \`Vendor/RunestoneEditor\` at \`$TARGET_SHA\`"
             echo "- Xcode: $(xcodebuild -version | tr '\n' ' ')"
             echo "- SHA256: \`$SHA256\`"
             echo
@@ -152,20 +208,12 @@ jobs:
           echo "[*] published $TAG ($SHA256)"
 
       - name: Dispatch Release Package
-        if: ${{ github.event_name == 'schedule' || inputs.release_package }}
+        if: needs.plan.outputs.package_version != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.plan.outputs.tag }}
-          REQUESTED_VERSION: ${{ inputs.package_version }}
+          VERSION: ${{ needs.plan.outputs.package_version }}
         run: |
-          VERSION="$REQUESTED_VERSION"
-          if [ -z "$VERSION" ]; then
-            VERSION=$(./Script/next-tag.sh package)
-          fi
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "[!] package_version must be semantic, for example 0.2.1: $VERSION"
-            exit 1
-          fi
           echo "[*] dispatching Release Package $VERSION <- $TAG"
           gh workflow run release.yml \
             --ref "$GITHUB_REF_NAME" \

@@ -98,12 +98,13 @@ See `Vendor/RunestoneEditor/README.md` for provenance and licenses.
 
 ## CI and Release
 
-All workflows run on GitHub-hosted `macos-26`. Building the Tree-sitter grammars for five slices is slow, so a release is split in two: the binary is built once and published under its own tag, and package versions only point at it.
+Build and test jobs run on GitHub-hosted `macos-26` (the small planning job runs on `ubuntu-latest`). Building the Tree-sitter grammars for five slices is slow, so a release is split in two: the binary is built once and published under its own tag, and package versions only point at it.
 
 Tags:
 
 - `upstream.<major>.<minor>.<patch>-<rev>` — binary release (`Runestone.xcframework.zip`). `<major>.<minor>.<patch>` is `RUNESTONE_VERSION` from `Upstream.versions`; `<rev>` increments on every build of the same upstream (vendored sources or build changed).
 - `<major>.<minor>.<patch>` — Swift package release; `Package.swift` points at one `upstream.*` asset.
+- `storage.0.1.0`, `storage.0.2.0` — legacy binary releases from before the split. Package tags `0.1.0` and `0.2.0` download from them, so they stay published; do not delete them.
 
 Workflows:
 
@@ -115,15 +116,21 @@ Workflows:
 Local equivalent:
 
 ```bash
+# Binary (Build XCFramework)
 ./Script/resolve-upstream.sh latest --write   # optional: re-pin simonbs/Runestone
-./Script/next-tag.sh upstream                 # e.g. upstream.0.5.2-2
+git commit -m "upstream: simonbs/Runestone 0.5.3" Upstream.versions && git push   # pin first, so the tag below describes the binary
+TAG=$(./Script/next-tag.sh upstream)          # e.g. upstream.0.5.3-1
 ./Script/build.sh
-gh release create upstream.0.5.2-2 --latest=false build/Runestone.xcframework.zip
-./Script/build-manifest.sh build/Runestone.xcframework.zip \
-  "https://github.com/Lakr233/Runestone.xcframework/releases/download/upstream.0.5.2-2/Runestone.xcframework.zip"
 ./Script/test.sh
-git commit -am "release: 0.2.2 (upstream.0.5.2-2)" && git push
-gh release create 0.2.2 --latest
+gh release create "$TAG" --target "$(git rev-parse HEAD)" --latest=false \
+  --title "Runestone XCFramework $TAG" --notes "simonbs/Runestone 0.5.3" build/Runestone.xcframework.zip
+
+# Package (Release Package)
+./Script/build-manifest.sh build/Runestone.xcframework.zip \
+  "https://github.com/Lakr233/Runestone.xcframework/releases/download/$TAG/Runestone.xcframework.zip"
+./Script/test.sh
+git commit -m "release: 0.3.0 ($TAG)" Package.swift && git push
+gh release create 0.3.0 --target "$(git rev-parse HEAD)" --latest --title "Runestone 0.3.0" --notes "Binary: $TAG"
 ```
 
 ## License
