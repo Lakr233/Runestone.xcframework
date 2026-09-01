@@ -1,10 +1,19 @@
 name: Release Package
 
+# The fast half of a release. Never compiles the XCFramework: it takes a binary
+# already published by Build XCFramework (upstream.<version>-<rev>), points
+# Package.swift at it, proves the manifest resolves and links on every
+# platform, commits, and tags the Swift package version.
+
 on:
   workflow_dispatch:
     inputs:
       package_version:
-        description: "Package version to publish, for example 1.0.0."
+        description: "Package version to publish, for example 0.2.1."
+        required: true
+        type: string
+      upstream_tag:
+        description: "Binary release to ship, for example upstream.0.5.2-1 (published by Build XCFramework)."
         required: true
         type: string
 
@@ -18,7 +27,7 @@ concurrency:
 jobs:
   release:
     runs-on: macos-26
-    timeout-minutes: 300
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -29,14 +38,18 @@ jobs:
       - name: Set up Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Resolve Release
-        id: release
+      - name: Validate Inputs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
         run: |
-          PACKAGE_VERSION="${{ github.event.inputs.package_version }}"
           if ! echo "$PACKAGE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "[!] package_version must be semantic, for example 1.0.0: $PACKAGE_VERSION"
+            echo "[!] package_version must be semantic, for example 0.2.1: $PACKAGE_VERSION"
+            exit 1
+          fi
+          if ! echo "$UPSTREAM_TAG" | grep -Eq '^upstream\.[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$'; then
+            echo "[!] upstream_tag must look like upstream.0.5.2-1: $UPSTREAM_TAG"
             exit 1
           fi
 
@@ -45,59 +58,69 @@ jobs:
             echo "[!] package tag already exists: $PACKAGE_VERSION"
             exit 1
           fi
+          if ! gh release view "$UPSTREAM_TAG" --json assets --jq '.assets[].name' | grep -qx 'Runestone.xcframework.zip'; then
+            echo "[!] release $UPSTREAM_TAG is missing Runestone.xcframework.zip"
+            exit 1
+          fi
 
-          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
-          echo "storage_tag=storage.$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+      - name: Download Binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          mkdir -p build
+          gh release download "$UPSTREAM_TAG" --pattern Runestone.xcframework.zip --dir build --clobber
+          ls -la build/Runestone.xcframework.zip
 
-      - name: Build XCFramework
-        run: ./Script/build.sh
+      - name: Write Release Manifest
+        env:
+          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          ./Script/build-manifest.sh build/Runestone.xcframework.zip \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$UPSTREAM_TAG/Runestone.xcframework.zip"
 
       - name: Compile Test
         run: ./Script/test.sh
 
-      - name: Write Release Manifest
-        run: |
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.storage_tag }}/Runestone.xcframework.zip"
-          ./Script/build-manifest.sh build/Runestone.xcframework.zip "$DOWNLOAD_URL"
-
-      - name: Stage Asset
-        run: cp ./build/Runestone.xcframework.zip ./Runestone.xcframework.zip
-
       - name: Commit Manifest
+        env:
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Package.swift
-          git commit -m "release: ${{ steps.release.outputs.package_version }}" || echo "No changes to commit"
-          git push
-
-      - name: Create Storage Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.release.outputs.storage_tag }}
-          target_commitish: ${{ github.ref_name }}
-          body: |
-            Runestone XCFramework ${{ steps.release.outputs.package_version }}
-          draft: false
-          prerelease: false
-          files: |
-            Runestone.xcframework.zip
+          if git diff --cached --quiet; then
+            echo "[*] Package.swift unchanged"
+          else
+            git commit -m "release: $PACKAGE_VERSION ($UPSTREAM_TAG)"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
 
       - name: Create Package Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.release.outputs.package_version }}
-          target_commitish: ${{ github.ref_name }}
-          body: |
-            Runestone ${{ steps.release.outputs.package_version }}
-
-            Combined prebuilt XCFramework:
-            - Runestone
-            - Tree-sitter
-            - RunestoneLanguageSupport
-            - RunestoneThemeSupport
-            - RunestoneEditor convenience API
-
-            Binary: `storage.${{ steps.release.outputs.package_version }}` / Runestone.xcframework.zip
-          draft: false
-          prerelease: false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+          UPSTREAM_TAG: ${{ inputs.upstream_tag }}
+        run: |
+          source ./Upstream.versions
+          SHA256=$(shasum -a 256 build/Runestone.xcframework.zip | awk '{print $1}')
+          NOTES="$RUNNER_TEMP/package-release-notes.md"
+          {
+            echo "Runestone $PACKAGE_VERSION"
+            echo
+            echo "Combined prebuilt XCFramework:"
+            echo "- Runestone (simonbs/Runestone \`$RUNESTONE_VERSION\`)"
+            echo "- Tree-sitter runtime and Simon Støvring's language packages"
+            echo "- Tomorrow / One Dark / Plain Text themes"
+            echo "- RunestoneEditor convenience API"
+            echo
+            echo "Binary: \`$UPSTREAM_TAG\` / Runestone.xcframework.zip"
+            echo "SHA256: \`$SHA256\`"
+          } > "$NOTES"
+          gh release create "$PACKAGE_VERSION" \
+            --target "$(git rev-parse HEAD)" \
+            --latest \
+            --title "Runestone $PACKAGE_VERSION" \
+            --notes-file "$NOTES"
+          echo "[*] published $PACKAGE_VERSION -> $UPSTREAM_TAG"

@@ -923,11 +923,11 @@ def main() -> None:
     root: Path = args.root.resolve()
     references: Path = args.references.resolve()
     runestone_src = references / "Runestone" / "Sources" / "Runestone"
-    editor_src = references / "RunestoneEditor" / "External"
+    editor_src = root / "Vendor" / "RunestoneEditor"
     if not runestone_src.is_dir():
         die(f"Runestone sources missing: {runestone_src}")
     if not editor_src.is_dir():
-        die(f"RunestoneEditor External missing: {editor_src}")
+        die(f"vendored RunestoneEditor missing: {editor_src}")
 
     src_root = root / "build" / "src"
     if src_root.exists():

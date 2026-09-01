@@ -1,9 +1,15 @@
-# Pinned upstreams used to assemble the Runestone XCFramework.
+# Pinned upstream used to assemble the Runestone XCFramework.
 # SHA pins are full 40-character lowercase commit hashes.
+#
+# RUNESTONE_VERSION names the binary release tag: upstream.<RUNESTONE_VERSION>-<rev>.
+# CI picks the next free rev on every build, so rebuilding the same upstream
+# (after touching Vendor/, Sources/FrameworkSupport, or the build) is fine.
+#
+# Tree-sitter, the language grammars, and the themes are vendored in
+# Vendor/RunestoneEditor and are not fetched.
+#
+# Re-pin with: ./Script/resolve-upstream.sh <version|latest> --write
 
 RUNESTONE_REPO=https://github.com/simonbs/Runestone.git
-# tag 0.5.2
+RUNESTONE_VERSION=0.5.2
 RUNESTONE_REF=592434a103a4d1ab83e14f87ac6eef569dd7a99d
-
-RUNESTONE_EDITOR_REPO=https://github.com/Lakr233/RunestoneEditor.git
-RUNESTONE_EDITOR_REF=29c5c27c9d62932bc388aa143dd2a99f96799630

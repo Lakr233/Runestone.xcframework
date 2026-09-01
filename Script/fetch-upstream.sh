@@ -39,6 +39,5 @@ clone_pinned() {
 }
 
 clone_pinned "Runestone" "$RUNESTONE_REPO" "$RUNESTONE_REF"
-clone_pinned "RunestoneEditor" "$RUNESTONE_EDITOR_REPO" "$RUNESTONE_EDITOR_REF"
 
-echo "[*] upstream checkouts ready in $REFERENCES_DIR"
+echo "[*] upstream checkout ready in $REFERENCES_DIR (Tree-sitter, languages, themes: Vendor/RunestoneEditor)"

@@ -1,44 +1,98 @@
 name: Build XCFramework
 
+# The slow half of a release: flattens simonbs/Runestone + Vendor/RunestoneEditor
+# into one module, archives every slice, and publishes the zip as an
+# upstream.<version>-<rev> release. Then hands off to Release Package, which
+# never rebuilds — it only points Package.swift at the published binary.
+#
+# Weekly schedule: builds only when the newest simonbs/Runestone tag has no
+# upstream.* release yet, re-pinning Upstream.versions to it. Manual runs build
+# the pinned version (next rev) unless upstream_version says otherwise.
+
 on:
   workflow_dispatch:
     inputs:
-      publish_storage:
-        description: "Publish a storage.<version> GitHub release with the XCFramework zip."
-        required: false
-        type: boolean
-        default: false
-      storage_version:
-        description: "Storage version, for example 1.0.0. Required when publishing."
+      upstream_version:
+        description: "simonbs/Runestone version to build. Empty keeps the pin in Upstream.versions; `latest` or a tag such as 0.5.3 re-pins and commits it."
         required: false
         type: string
+      release_package:
+        description: "Dispatch Release Package with the new upstream tag once the binary is published."
+        required: false
+        type: boolean
+        default: true
+      package_version:
+        description: "Package version for Release Package, for example 0.2.1. Empty bumps the patch of the latest package tag."
+        required: false
+        type: string
+  schedule:
+    - cron: "0 3 * * 1" # Monday 03:00 UTC
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: build-xcframework
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  plan:
+    name: Resolve Upstream
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      upstream_version: ${{ steps.plan.outputs.upstream_version }}
+      upstream_ref: ${{ steps.plan.outputs.upstream_ref }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve Upstream
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.upstream_version }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            REQUESTED=latest
+          fi
+          eval "$(./Script/resolve-upstream.sh "$REQUESTED")"
+          BUILD=true
+          if [ "$EVENT_NAME" = "schedule" ] && ./Script/next-tag.sh has-upstream "$RUNESTONE_VERSION"; then
+            echo "[*] simonbs/Runestone $RUNESTONE_VERSION already has an upstream.* release; nothing to build"
+            BUILD=false
+          fi
+          TAG=$(./Script/next-tag.sh upstream "$RUNESTONE_VERSION")
+          echo "[*] simonbs/Runestone $RUNESTONE_VERSION ($RUNESTONE_REF) -> $TAG, build=$BUILD"
+          {
+            echo "build=$BUILD"
+            echo "upstream_version=$RUNESTONE_VERSION"
+            echo "upstream_ref=$RUNESTONE_REF"
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+
   build:
+    name: Build & Publish
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     runs-on: macos-26
     timeout-minutes: 300
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Pin Upstream
+        run: ./Script/resolve-upstream.sh "${{ needs.plan.outputs.upstream_version }}" --write
+
       - name: Build XCFramework
         run: ./Script/build.sh
-
-      - name: Compile Test
-        run: ./Script/test.sh
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -48,23 +102,72 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publish Storage Release
-        if: ${{ github.event.inputs.publish_storage == 'true' }}
+      - name: Commit Upstream Pin
+        id: pin
+        env:
+          RUNESTONE_VERSION: ${{ needs.plan.outputs.upstream_version }}
+          RUNESTONE_REF: ${{ needs.plan.outputs.upstream_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Upstream.versions
+          if git diff --cached --quiet; then
+            echo "[*] Upstream.versions unchanged"
+          else
+            git commit -m "upstream: simonbs/Runestone $RUNESTONE_VERSION ($RUNESTONE_REF)"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Upstream Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          RUNESTONE_VERSION: ${{ needs.plan.outputs.upstream_version }}
+          RUNESTONE_REF: ${{ needs.plan.outputs.upstream_ref }}
+          TARGET_SHA: ${{ steps.pin.outputs.sha }}
         run: |
-          VERSION="${{ github.event.inputs.storage_version }}"
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "[!] storage_version must be semantic, for example 1.0.0"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "[!] upstream tag already exists: $TAG"
             exit 1
           fi
-          TAG="storage.$VERSION"
-          git fetch --tags origin
-          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "[!] storage tag already exists: $TAG"
-            exit 1
-          fi
+          SHA256=$(shasum -a 256 build/Runestone.xcframework.zip | awk '{print $1}')
+          NOTES="$RUNNER_TEMP/upstream-release-notes.md"
+          {
+            echo "Prebuilt Runestone XCFramework: iOS, iOS Simulator, Mac Catalyst, visionOS, visionOS Simulator."
+            echo
+            echo "- simonbs/Runestone \`$RUNESTONE_VERSION\` (\`$RUNESTONE_REF\`)"
+            echo "- Tree-sitter runtime, language grammars, and themes from \`Vendor/RunestoneEditor\` at \`$TARGET_SHA\`"
+            echo "- Xcode: $(xcodebuild -version | tr '\n' ' ')"
+            echo "- SHA256: \`$SHA256\`"
+            echo
+            echo "Binary-only release; consume it through a package tag (see Release Package)."
+          } > "$NOTES"
           gh release create "$TAG" \
-            --title "Runestone XCFramework $VERSION" \
-            --notes "Prebuilt Runestone XCFramework $VERSION (Tree-sitter, languages, and themes included)." \
+            --target "$TARGET_SHA" \
+            --latest=false \
+            --title "Runestone XCFramework $TAG" \
+            --notes-file "$NOTES" \
             build/Runestone.xcframework.zip
+          echo "[*] published $TAG ($SHA256)"
+
+      - name: Dispatch Release Package
+        if: ${{ github.event_name == 'schedule' || inputs.release_package }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          REQUESTED_VERSION: ${{ inputs.package_version }}
+        run: |
+          VERSION="$REQUESTED_VERSION"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(./Script/next-tag.sh package)
+          fi
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "[!] package_version must be semantic, for example 0.2.1: $VERSION"
+            exit 1
+          fi
+          echo "[*] dispatching Release Package $VERSION <- $TAG"
+          gh workflow run release.yml \
+            --ref "$GITHUB_REF_NAME" \
+            -f package_version="$VERSION" \
+            -f upstream_tag="$TAG"
