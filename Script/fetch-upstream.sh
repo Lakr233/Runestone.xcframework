@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found"
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository."
     exit 1
 fi
 
@@ -33,7 +33,7 @@ clone_pinned() {
     local resolved
     resolved=$(git -C "$dest" rev-parse HEAD)
     if [ "$resolved" != "$ref" ]; then
-        echo "[!] $name resolved to $resolved, pinned $ref"
+        echo "[!] $name resolved to $resolved, but the pin is $ref. Update Upstream.versions or check the remote."
         exit 1
     fi
 }

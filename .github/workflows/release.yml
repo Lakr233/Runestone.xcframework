@@ -111,7 +111,7 @@ jobs:
             echo
             echo "Combined prebuilt XCFramework:"
             echo "- Runestone (simonbs/Runestone \`$RUNESTONE_VERSION\`)"
-            echo "- Tree-sitter runtime and Simon Støvring's language packages"
+            echo "- Tree-sitter runtime and language grammars"
             echo "- Tomorrow / One Dark / Plain Text themes"
             echo "- RunestoneEditor convenience API"
             echo

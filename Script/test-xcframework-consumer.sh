@@ -4,14 +4,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found"
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository."
     exit 1
 fi
 
 XCFRAMEWORK_PATH=${1:-BinaryTarget/Runestone.xcframework}
 
 if [ ! -d "$XCFRAMEWORK_PATH" ]; then
-    echo "[!] xcframework not found: $XCFRAMEWORK_PATH"
+    echo "[!] xcframework not found: $XCFRAMEWORK_PATH. Run ./Script/build.sh first."
     exit 1
 fi
 
@@ -83,7 +83,7 @@ test_build() {
         -derivedDataPath "$WORK_DIR/DerivedData" \
         -packageCachePath "$WORK_DIR/PackageCache" \
         build 2>&1 | format_output; then
-        echo "[!] consumer build failed destination=$destination"
+        echo "[!] Consumer build failed for $destination. Check the output above and try again."
         exit 1
     fi
 }

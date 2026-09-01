@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found"
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository."
     exit 1
 fi
 
@@ -17,7 +17,7 @@ if [ -z "$XCFRAMEWORK_PATH_ZIP" ] || [ -z "$DOWNLOAD_URL" ]; then
 fi
 
 if [ ! -f "$XCFRAMEWORK_PATH_ZIP" ]; then
-    echo "[!] xcframework zip not found: $XCFRAMEWORK_PATH_ZIP"
+    echo "[!] Archive not found: $XCFRAMEWORK_PATH_ZIP"
     exit 1
 fi
 

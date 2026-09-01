@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found"
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository."
     exit 1
 fi
 
@@ -25,7 +25,7 @@ format_output() {
 run() {
     echo "[*] $*"
     if ! "$@" 2>&1 | format_output; then
-        echo "[!] failed: $*"
+        echo "[!] This step failed. Check the output above and try again."
         exit 1
     fi
 }

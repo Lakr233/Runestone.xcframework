@@ -13,16 +13,16 @@ on:
   workflow_dispatch:
     inputs:
       upstream_version:
-        description: "simonbs/Runestone version to build. Empty keeps the pin in Upstream.versions; `latest` or a tag such as 0.5.3 re-pins and commits it."
+        description: "simonbs/Runestone version to build. Leave empty to keep the pinned version, or enter `latest` or a tag such as 0.5.3 to re-pin and commit it."
         required: false
         type: string
       release_package:
-        description: "Dispatch Release Package with the new upstream tag once the binary is published."
+        description: "Run Release Package with the new upstream tag after the binary is published."
         required: false
         type: boolean
         default: true
       package_version:
-        description: "Package version for Release Package, for example 0.2.1. Empty bumps the patch of the latest package tag."
+        description: "Package version for Release Package, for example 0.2.1. Leave empty to bump the patch of the latest package version."
         required: false
         type: string
   schedule:
@@ -141,7 +141,7 @@ jobs:
             echo "- Xcode: $(xcodebuild -version | tr '\n' ' ')"
             echo "- SHA256: \`$SHA256\`"
             echo
-            echo "Binary-only release; consume it through a package tag (see Release Package)."
+            echo "Binary-only release. To add Runestone to a Swift package, use a versioned package release instead."
           } > "$NOTES"
           gh release create "$TAG" \
             --target "$TARGET_SHA" \

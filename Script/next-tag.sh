@@ -12,7 +12,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found" >&2
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository." >&2
     exit 1
 fi
 
@@ -25,7 +25,7 @@ remote_tags() {
 
 require_semver() {
     if ! echo "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-        echo "[!] version must be semantic, for example 0.5.2: $1" >&2
+        echo "[!] Version must be semantic, for example 0.5.2. Received: $1" >&2
         exit 1
     fi
 }

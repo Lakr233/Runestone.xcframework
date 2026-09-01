@@ -54,7 +54,7 @@ if let language = TreeSitterLanguage.language(withIdentifier: "swift") {
 }
 ```
 
-## Local build
+## Local Build
 
 Requires Xcode and Python 3.
 
@@ -77,7 +77,7 @@ The script:
 3. Writes `build/Runestone.xcodeproj` and archives iOS, iOS Simulator, Mac Catalyst, visionOS, and visionOS Simulator
 4. Emits `BinaryTarget/Runestone.xcframework` and `build/Runestone.xcframework.zip`
 
-## Compile test
+## Compile Test
 
 ```bash
 ./Script/test.sh
@@ -85,7 +85,7 @@ The script:
 
 Builds every product for each platform slice, the example app for iOS, iOS Simulator, and Mac Catalyst, then runs `Tests/RunestoneTests` on Mac Catalyst. It links whatever `Package.swift` points at: the released binary on a fresh checkout, `BinaryTarget/` after `./Script/build.sh`.
 
-## Upstream sources
+## Upstream Sources
 
 - [simonbs/Runestone](https://github.com/simonbs/Runestone) `0.5.2` — the editor, pinned by SHA in `Upstream.versions` and fetched into `References/` at build time. The Tomorrow, One Dark, and Plain Text themes are Simon Støvring's as well, from its `Example/Themes`.
 - `Vendor/RunestoneEditor/` — checked in, formerly the `External/` tree of the (now deleted) `Lakr233/RunestoneEditor` package:
@@ -96,7 +96,7 @@ Builds every product for each platform slice, the example app for iOS, iOS Simul
 
 See `Vendor/RunestoneEditor/README.md` for provenance and licenses.
 
-## CI and release
+## CI and Release
 
 All workflows run on GitHub-hosted `macos-26`. Building the Tree-sitter grammars for five slices is slow, so a release is split in two: the binary is built once and published under its own tag, and package versions only point at it.
 
@@ -107,7 +107,7 @@ Tags:
 
 Workflows:
 
-- **Build XCFramework** — weekly (Monday 03:00 UTC) and `workflow_dispatch`. Fetches upstream, archives every slice, publishes `upstream.<version>-<rev>` (next free rev), then dispatches **Release Package** with `package_version` (input, or latest package tag + patch). The weekly run checks the newest `simonbs/Runestone` tag and only builds when it has no `upstream.*` release yet, re-pinning `Upstream.versions` and committing the bump. Manual runs build the pinned version; set `upstream_version` (`latest` or a tag) to re-pin, untick `release_package` to only publish the binary.
+- **Build XCFramework** — weekly (Monday 03:00 UTC) and `workflow_dispatch`. Fetches upstream, archives every slice, publishes `upstream.<version>-<rev>` (next free rev), then dispatches **Release Package** with `package_version` (input, or latest package tag + patch). The weekly run checks the newest `simonbs/Runestone` tag and only builds when it has no `upstream.*` release yet, re-pinning `Upstream.versions` and committing the bump. Manual runs build the pinned version; set `upstream_version` (`latest` or a tag) to re-pin, uncheck `release_package` to publish only the binary.
 - **Release Package** — `workflow_dispatch` with `package_version` and `upstream_tag`. Downloads that binary, writes the `Package.swift` URL + checksum, runs `./Script/test.sh` against it (SwiftPM resolves the published zip), commits the manifest, and tags the package release. Never rebuilds — reuse an existing `upstream.*` tag to ship shim-only changes in minutes.
 - **PR Build & Test** — runs `./Script/test.sh` against the released binary
 - **UI Tests** — builds the XCFramework, then runs `Example/MobileRunestoneApp`

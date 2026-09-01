@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found"
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository."
     exit 1
 fi
 
@@ -51,7 +51,7 @@ while [ $# -gt 0 ]; do
             exit 0
             ;;
         *)
-            echo "[!] unknown argument: $1"
+            echo "[!] Unknown argument: $1"
             usage
             exit 1
             ;;
@@ -106,13 +106,13 @@ archive_platform() {
     fi
 
     if ! "${command[@]}" 2>&1 | format_output; then
-        echo "[!] archive failed: $name"
+        echo "[!] The $name archive failed. Check the build output above and try again."
         exit 1
     fi
 
     local framework="$archive_path/Products/Library/Frameworks/Runestone.framework"
     if [ ! -d "$framework" ]; then
-        echo "[!] framework missing from $name archive: $framework"
+        echo "[!] The $name build did not produce Runestone.framework. Check the build output above and try again."
         find "$archive_path/Products" -maxdepth 5 -print
         exit 1
     fi
@@ -139,7 +139,7 @@ for platform in "${PLATFORM_LIST[@]}"; do
             archive_platform "visionos-simulator" "generic/platform=visionOS Simulator" "arm64 x86_64"
             ;;
         *)
-            echo "[!] unknown platform: $platform"
+            echo "[!] Unknown platform: $platform. Run ./Script/build.sh --help for the supported platforms."
             exit 1
             ;;
     esac

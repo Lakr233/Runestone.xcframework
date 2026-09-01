@@ -14,7 +14,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found" >&2
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository." >&2
     exit 1
 fi
 
@@ -38,14 +38,14 @@ else
     if [ "$REQUESTED" = "latest" ]; then
         VERSION=$(echo "$TAGS" | sed -n 's|.*refs/tags/\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
         if [ -z "$VERSION" ]; then
-            echo "[!] no semantic tags on $RUNESTONE_REPO" >&2
+            echo "[!] No semantic version tags found on $RUNESTONE_REPO. Pass a specific version instead." >&2
             exit 1
         fi
     else
         VERSION=$REQUESTED
     fi
     if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-        echo "[!] version must be semantic, for example 0.5.2: $VERSION" >&2
+        echo "[!] Version must be semantic, for example 0.5.2. Received: $VERSION" >&2
         exit 1
     fi
     # Annotated tags list both the tag object and the peeled commit (^{}); prefer the commit.
@@ -54,7 +54,7 @@ else
         REF=$(echo "$TAGS" | awk -v t="refs/tags/$VERSION" '$2 == t { print $1 }')
     fi
     if [ -z "$REF" ]; then
-        echo "[!] tag $VERSION not found on $RUNESTONE_REPO" >&2
+        echo "[!] Version $VERSION was not found on $RUNESTONE_REPO. Check the version and try again." >&2
         exit 1
     fi
 fi

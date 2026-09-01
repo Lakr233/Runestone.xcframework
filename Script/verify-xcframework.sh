@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 if [ ! -f Upstream.versions ]; then
-    echo "[!] repository root not found"
+    echo "[!] Repository root not found. Run this script from a full checkout of the repository."
     exit 1
 fi
 
@@ -16,7 +16,7 @@ if [ -z "$INPUT_PATH" ]; then
 fi
 
 if [ ! -e "$INPUT_PATH" ]; then
-    echo "[!] not found: $INPUT_PATH"
+    echo "[!] Path not found: $INPUT_PATH"
     exit 1
 fi
 
@@ -37,7 +37,7 @@ if [[ "$INPUT_PATH" == *.zip ]]; then
 fi
 
 if [ -z "$XCFRAMEWORK_PATH" ] || [ ! -d "$XCFRAMEWORK_PATH" ]; then
-    echo "[!] xcframework not found in input: $INPUT_PATH"
+    echo "[!] No xcframework found in $INPUT_PATH"
     exit 1
 fi
 
@@ -50,14 +50,14 @@ import sys
 xcframework = sys.argv[1]
 info_path = os.path.join(xcframework, "Info.plist")
 if not os.path.isfile(info_path):
-    raise SystemExit(f"[!] missing xcframework Info.plist: {info_path}")
+    raise SystemExit("[!] The xcframework is incomplete. Rebuild it and try again.")
 
 with open(info_path, "rb") as handle:
     info = plistlib.load(handle)
 
 libraries = info.get("AvailableLibraries")
 if not isinstance(libraries, list) or not libraries:
-    raise SystemExit("[!] AvailableLibraries is empty or missing")
+    raise SystemExit("[!] The xcframework lists no libraries. Rebuild it and try again.")
 
 expected = {
     ("ios", None): {"arm64"},
@@ -75,24 +75,24 @@ for library in libraries:
     declared = set(library.get("SupportedArchitectures", []))
 
     if not identifier:
-        raise SystemExit("[!] library entry missing LibraryIdentifier")
+        raise SystemExit("[!] The xcframework metadata is incomplete. Rebuild it and try again.")
     if (platform, platform_variant) not in expected:
-        raise SystemExit(f"[!] unsupported platform in {identifier}: {platform} {platform_variant}")
+        raise SystemExit(f"[!] {identifier} targets an unsupported platform. Rebuild the xcframework and try again.")
     if library_path != "Runestone.framework":
-        raise SystemExit(f"[!] {identifier} must reference Runestone.framework, got {library_path!r}")
+        raise SystemExit(f"[!] {identifier} does not contain Runestone.framework. Rebuild the xcframework and try again.")
 
     variant_dir = os.path.join(xcframework, identifier)
     framework = os.path.join(variant_dir, library_path)
     binary = os.path.join(framework, "Runestone")
     if not os.path.isdir(framework):
-        raise SystemExit(f"[!] missing framework: {framework}")
+        raise SystemExit(f"[!] {identifier} is missing Runestone.framework. Rebuild the xcframework and try again.")
     if not os.path.isfile(binary):
-        raise SystemExit(f"[!] missing framework binary: {binary}")
+        raise SystemExit(f"[!] {identifier} is missing the Runestone binary. Rebuild the xcframework and try again.")
 
     actual = set(subprocess.check_output(["lipo", "-archs", binary], text=True).split())
     if actual != declared:
         raise SystemExit(
-            f"[!] {identifier} architecture metadata mismatch: plist={sorted(declared)} binary={sorted(actual)}"
+            f"[!] {identifier} declares different architectures than it contains. Rebuild the xcframework and try again."
         )
     wanted = expected.get((platform, platform_variant))
     if wanted is not None and actual != wanted:
@@ -103,7 +103,7 @@ for library in libraries:
 
     swiftmodule = os.path.join(framework, "Modules", "Runestone.swiftmodule")
     if not os.path.isdir(swiftmodule):
-        raise SystemExit(f"[!] missing swiftmodule: {swiftmodule}")
+        raise SystemExit(f"[!] {identifier} is missing its Swift module. Rebuild the xcframework and try again.")
 
 print(f"[*] verified xcframework: {xcframework}")
 print(f"[*] slices: {', '.join(identifier for identifier in os.listdir(xcframework) if identifier != 'Info.plist')}")
