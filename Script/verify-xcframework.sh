@@ -50,7 +50,7 @@ import sys
 xcframework = sys.argv[1]
 info_path = os.path.join(xcframework, "Info.plist")
 if not os.path.isfile(info_path):
-    raise SystemExit("[!] The xcframework is incomplete. Rebuild it and try again.")
+    raise SystemExit(f"[!] The xcframework is incomplete: {info_path} is missing. Rebuild it and try again.")
 
 with open(info_path, "rb") as handle:
     info = plistlib.load(handle)
@@ -77,7 +77,7 @@ for library in libraries:
     if not identifier:
         raise SystemExit("[!] The xcframework metadata is incomplete. Rebuild it and try again.")
     if (platform, platform_variant) not in expected:
-        raise SystemExit(f"[!] {identifier} targets an unsupported platform. Rebuild the xcframework and try again.")
+        raise SystemExit(f"[!] {identifier} targets an unsupported platform ({platform} {platform_variant}). Rebuild the xcframework and try again.")
     if library_path != "Runestone.framework":
         raise SystemExit(f"[!] {identifier} does not contain Runestone.framework. Rebuild the xcframework and try again.")
 
@@ -92,7 +92,7 @@ for library in libraries:
     actual = set(subprocess.check_output(["lipo", "-archs", binary], text=True).split())
     if actual != declared:
         raise SystemExit(
-            f"[!] {identifier} declares different architectures than it contains. Rebuild the xcframework and try again."
+            f"[!] {identifier} declares different architectures than it contains (Info.plist {sorted(declared)}, binary {sorted(actual)}). Rebuild the xcframework and try again."
         )
     wanted = expected.get((platform, platform_variant))
     if wanted is not None and actual != wanted:
