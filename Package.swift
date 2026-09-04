@@ -13,15 +13,6 @@ let package = Package(
         .library(name: "RunestoneEditor", targets: ["RunestoneEditor"]),
         .library(name: "RunestoneLanguageSupport", targets: ["RunestoneLanguageSupport"]),
         .library(name: "RunestoneThemeSupport", targets: ["RunestoneThemeSupport"]),
-        // The XCFramework is static, so the products above link Runestone into
-        // every binary that depends on them. This one vends the same modules as
-        // a single dynamic framework instead — the one place a Runestone dylib
-        // exists. Use it, or the products above, not both.
-        .library(
-            name: "RunestoneDynamic",
-            type: .dynamic,
-            targets: ["RunestoneEditor", "RunestoneLanguageSupport", "RunestoneThemeSupport"]
-        ),
     ],
     targets: [
         .binaryTarget(
