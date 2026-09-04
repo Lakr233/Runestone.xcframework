@@ -26,8 +26,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "Runestone",
-            url: "https://github.com/Lakr233/Runestone.xcframework/releases/download/upstream.0.5.2-2/Runestone.xcframework.zip",
-            checksum: "3b63310e4e031223de7332b5300359435f2be7562e7e446b5c4254d4bbd3ef7f"
+            url: "https://github.com/Lakr233/Runestone.xcframework/releases/download/upstream.0.5.2-3/Runestone.xcframework.zip",
+            checksum: "7dcc4fc94bd33c4e8963c37373ecb2d21640f33d999abd9549ff972bbc01913d"
         ),
         .target(
             name: "RunestoneEditor",
