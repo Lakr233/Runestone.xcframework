@@ -20,8 +20,17 @@ This replaces the former `Lakr233/Runestone` and `Lakr233/RunestoneEditor` packa
 | `RunestoneEditor` | `@_exported import Runestone` — drop-in for the old nested package |
 | `RunestoneLanguageSupport` | Compatibility shim |
 | `RunestoneThemeSupport` | Compatibility shim |
+| `RunestoneDynamic` | The three shims above in one dynamic framework |
 
 `import RunestoneEditor` is enough. The extra products exist so existing `import RunestoneLanguageSupport` / `import RunestoneThemeSupport` sites keep compiling.
+
+## Static or dynamic
+
+The XCFramework is a **static** framework, so the default products link everything into whatever binary depends on them and the linker can strip the grammars you never load. Xcode still copies `Runestone.framework` into `YourApp.app/Frameworks`, but only for the resources (queries, theme colors, localizations, `PrivacyInfo.xcprivacy`) — the binary in there is an empty stub, not the 100 MB archive.
+
+Depend on `RunestoneDynamic` instead when several of your own dynamic frameworks import Runestone and you want one copy of the code rather than one per framework. It vends the same three modules — `import RunestoneEditor` still works — as a single dynamic framework, and it is the only place a Runestone dylib exists. Pick one or the other, not both.
+
+The static binary needs the C++ standard library. The four products above already link it; if you depend on the raw `Runestone` product, or wire the XCFramework up by hand, add `.linkedLibrary("c++")` (or `-lc++`) yourself.
 
 ## Installation
 
@@ -74,7 +83,7 @@ The script:
 
 1. Fetches the pinned `simonbs/Runestone` into `References/` (`Upstream.versions`)
 2. Flattens it with `Vendor/RunestoneEditor` (Tree-sitter + languages + themes) and `Sources/FrameworkSupport` into one module
-3. Writes `build/Runestone.xcodeproj` and archives iOS, iOS Simulator, Mac Catalyst, visionOS, and visionOS Simulator
+3. Writes `build/Runestone.xcodeproj` (`MACH_O_TYPE = staticlib`) and archives iOS, iOS Simulator, Mac Catalyst, visionOS, and visionOS Simulator
 4. Emits `BinaryTarget/Runestone.xcframework` and `build/Runestone.xcframework.zip`
 
 ## Compile Test

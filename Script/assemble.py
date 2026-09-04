@@ -89,7 +89,11 @@ def rewrite_runestone_swift(text: str, relative: Path | None = None) -> str:
     text = text.replace("HighlightName(", "DefaultThemeHighlightName(")
     text = text.replace("if let highlightName = HighlightName", "if let highlightName = DefaultThemeHighlightName")
     name = relative.name if relative else ""
-    if name == "TextView.swift":
+    if name == "L10n.swift":
+        # Static framework: Bundle(for:) resolves to the linking binary, not to
+        # the embedded Runestone.framework that carries the .lproj folders.
+        text = text.replace("return Bundle(for: BundleToken.self)", "return Bundle.module")
+    elif name == "TextView.swift":
         # @available(iOS 26.0, *) on scrollPocketView is remapped to visionOS 26 but the call-site check is not.
         text = text.replace("if #available(iOS 26, *), let scrollPocketView {", "if #available(iOS 26, visionOS 26, *), let scrollPocketView {")
     elif name == "TreeSitterParser.swift":
@@ -593,7 +597,7 @@ def write_xcode_project(root: Path, language_names: list[str]) -> None:
             "IPHONEOS_DEPLOYMENT_TARGET": "15.0",
             "LD_RUNPATH_SEARCH_PATHS": '"$(inherited) @executable_path/Frameworks @loader_path/Frameworks"',
             "MACOSX_DEPLOYMENT_TARGET": "11.0",
-            "MACH_O_TYPE": "mh_dylib",
+            "MACH_O_TYPE": "staticlib",
             "MARKETING_VERSION": "1.0.0",
             "OTHER_CFLAGS": '"-w"',
             "OTHER_CPLUSPLUSFLAGS": '"-w -std=c++14"',

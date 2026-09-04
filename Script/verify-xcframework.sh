@@ -89,6 +89,12 @@ for library in libraries:
     if not os.path.isfile(binary):
         raise SystemExit(f"[!] {identifier} is missing the Runestone binary. Rebuild the xcframework and try again.")
 
+    kind = subprocess.check_output(["file", "-b", binary], text=True)
+    if "ar archive" not in kind:
+        raise SystemExit(
+            f"[!] {identifier} is not a static library ({kind.strip()}). Check MACH_O_TYPE in Script/assemble.py and rebuild the xcframework."
+        )
+
     actual = set(subprocess.check_output(["lipo", "-archs", binary], text=True).split())
     if actual != declared:
         raise SystemExit(
