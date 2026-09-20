@@ -162,7 +162,8 @@ jobs:
             git commit -m "upstream: simonbs/Runestone $RUNESTONE_VERSION ($RUNESTONE_REF)"
             # main may have moved during the build; replay the pin on top of it.
             git fetch origin "$GITHUB_REF_NAME"
-            git rebase "origin/$GITHUB_REF_NAME"
+            # build.sh left Package.swift modified, and rebase refuses a dirty tree.
+            git rebase --autostash "origin/$GITHUB_REF_NAME"
             git push origin "HEAD:$GITHUB_REF_NAME"
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
